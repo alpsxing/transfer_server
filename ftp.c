@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ftplib.h>
+#include <sys/times.h>
+#include "transfer.h"
 
 #define FTP_HOST "61.163.24.98:6069"
 //#define FTP_HOST "127.0.0.1"
@@ -11,9 +13,14 @@
 //#define FTP_PASSWORD "ftp"
 #define FTP_PASSWORD "xiruan@123"
 
+#define FTP_RECONNECT_TIMEOUT  60
+
+static clock_t _last_conn_ticks = 0;;
+static netbuf * ftph = NULL;
+static int _ftp_inited = 0;
+
 int ftp_transfer(const char *local_file, const char *remote_path, const char *remote_file)
 {
-    netbuf * ftph;
     int rc = -1;
     int rindex = strlen(remote_path) - 1;
     int lindex;
@@ -21,26 +28,38 @@ int ftp_transfer(const char *local_file, const char *remote_path, const char *re
     char *remote_file_tmp = NULL;
     int tmp_filename_len = strlen(remote_file) + 4;
 
-    FtpInit();
-    printf("---ftpinit ok-----\n");
-    if (!FtpConnect(FTP_HOST, &ftph))
-    {
-        printf("ftpconnect failed \n");
-        return -1;
+    if (!_ftp_inited) {
+        FtpInit();
+        _ftp_inited = 1;
     }
-    printf("---FtpConnect ok-----\n");
+
+    if (!ftph || getSecondsPassed(_last_conn_ticks) >= FTP_RECONNECT_TIMEOUT) {
+        if (ftph) {
+            FtpQuit(ftph);
+            ftph = NULL;
+        }
+        if (!FtpConnect(FTP_HOST, &ftph))
+        {
+            printf("ftpconnect failed \n");
+            return -1;
+        }
+        printf("---FtpConnect ok-----\n");
     
-    if (!FtpLogin(FTP_USER, FTP_PASSWORD, ftph)) {
-        printf("Failed to login\n");
-        goto exit;
-    }
-    printf("---FtpLogin ok-----\n");
+        if (!FtpLogin(FTP_USER, FTP_PASSWORD, ftph)) {
+            printf("Failed to login\n");
+            goto exit;
+        }
+        printf("---FtpLogin ok-----\n");
 
 
-    if (!FtpOptions(FTPLIB_CONNMODE, FTPLIB_PASSIVE, ftph)) {
-        printf("Failed to change to PASSIVE mode\n");
-        goto exit;
+        if (!FtpOptions(FTPLIB_CONNMODE, FTPLIB_PASSIVE, ftph)) {
+            printf("Failed to change to PASSIVE mode\n");
+            goto exit;
+        }
+        _last_conn_ticks = times(NULL);
     }
+    else
+        printf("ftpconnect using last connection \n");
 
     while (rindex >= 0) {
         if (remote_path[rindex] == '/') {
@@ -96,7 +115,10 @@ int ftp_transfer(const char *local_file, const char *remote_path, const char *re
 exit:
     if (remote_file_tmp)
         free(remote_file_tmp);
-    FtpQuit(ftph);
+    if (rc) {
+        FtpQuit(ftph);
+        ftph = NULL;
+    }
     printf("----ftp_transfer exit----\n");
     return rc;
 }

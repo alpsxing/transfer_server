@@ -5,12 +5,13 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <time.h>
-#include <ftplib.h>
+#include <sys/times.h>
 #include "ulist.h"
 #include "ftp.h"
 #include "transfer.h"
 #include "crypt.h"
 
+static clock_t _sys_ticks_per_sec = 0;
 
 typedef struct {
     const char *name;
@@ -55,12 +56,19 @@ static pthread_mutex_t _transfer_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t _transfer_cond = PTHREAD_COND_INITIALIZER;
 static LIST_HEAD(_transfer_list);
 
+int getSecondsPassed(clock_t last_clock)
+{
+    clock_t now_clock = times(NULL);
+    return (now_clock - last_clock) / _sys_ticks_per_sec;
+}
+
 static int updateTransferFile(transfer_file_t *tf)
 {
     const char *ts = _data_type_info[tf->type].name;
     const char *cs = _data_type_info[tf->type].code;
     int plen = strlen(ts) + 15;
     int flen = 25 + strlen(DEV_TYPE) + strlen(ORIG_ID) + strlen(ORG_ID) + strlen(cs);
+    int okflen = flen+3;
     struct tm *tm = localtime(&tf->tm);
     int ret;
     int r;
@@ -103,7 +111,7 @@ static int updateTransferFile(transfer_file_t *tf)
         return -1;
     }
     
-    tf->remote_ok = (char *)malloc(flen+4);
+    tf->remote_ok = (char *)malloc(okflen+1);
     if (!tf->remote_ok) {
         free(tf->path);
         free(tf->remote_name);
@@ -111,7 +119,16 @@ static int updateTransferFile(transfer_file_t *tf)
         tf->remote_name = NULL;
         return -1;
     }
-    ret = snprintf(tf->remote_ok, flen+4, "%s.ok", tf->remote_name);
+    ret = snprintf(tf->remote_ok, okflen+1, "%s.ok", tf->remote_name);
+    if (ret != okflen) {
+        free(tf->path);
+        free(tf->remote_name);
+        free(tf->remote_ok);
+        tf->path = NULL;
+        tf->remote_name = NULL;
+        tf->remote_ok = NULL;
+        return -1;
+    }
     
     return 0;
 }
@@ -165,13 +182,17 @@ static void freeTransferFile(transfer_file_t *tf)
         free(tf->path);
     if (tf->remote_name)
         free(tf->remote_name);
+    if (tf->remote_ok)
+        free(tf->remote_ok);
     free(tf);
-
 }
 
 static void *transferThreadLoop(void *arg)
 {
     transfer_file_t *t, *tmp;
+
+    _sys_ticks_per_sec = sysconf(_SC_CLK_TCK);
+
     while (1) {
         pthread_mutex_lock(&_transfer_mutex);
         while (_transfer_exit == 0 && list_empty(&_transfer_list))
