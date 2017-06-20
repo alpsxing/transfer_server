@@ -190,13 +190,24 @@ static void freeTransferFile(transfer_file_t *tf)
 static void *transferThreadLoop(void *arg)
 {
     transfer_file_t *t, *tmp;
+    int ftp_secs;
+    struct timespec to;
+    int ret;
 
     _sys_ticks_per_sec = sysconf(_SC_CLK_TCK);
 
     while (1) {
         pthread_mutex_lock(&_transfer_mutex);
-        while (_transfer_exit == 0 && list_empty(&_transfer_list))
-            pthread_cond_wait(&_transfer_cond, &_transfer_mutex);
+        ftp_secs = update_ftp_conn();
+        while (_transfer_exit == 0 && list_empty(&_transfer_list)) {
+            if (!ftp_secs)
+                pthread_cond_wait(&_transfer_cond, &_transfer_mutex);
+            else {
+                clock_gettime(CLOCK_MONOTONIC, &to);
+                to.tv_sec += ftp_secs;
+                pthread_cond_timedwait(&_transfer_cond, &_transfer_mutex, &to);
+            }
+        }
         if (_transfer_exit) {
             pthread_mutex_unlock(&_transfer_mutex);
             break;

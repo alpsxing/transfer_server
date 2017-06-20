@@ -19,6 +19,22 @@ static clock_t _last_conn_ticks = 0;;
 static netbuf * ftph = NULL;
 static int _ftp_inited = 0;
 
+int update_ftp_conn()
+{
+    int secs;
+    if (ftph) {
+        secs = getSecondsPassed(_last_conn_ticks);
+        if (secs >= FTP_RECONNECT_TIMEOUT) {
+            FtpQuit(ftph);
+            ftph = NULL;
+            return 0;
+        }
+        return FTP_RECONNECT_TIMEOUT - secs;
+    }
+    else
+        return 0;
+}
+
 int ftp_transfer(const char *local_file, const char *remote_path, const char *remote_file)
 {
     int rc = -1;
