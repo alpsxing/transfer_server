@@ -18,6 +18,7 @@
 static clock_t _last_conn_ticks = 0;;
 static netbuf * ftph = NULL;
 static int _ftp_inited = 0;
+static char _home_path[PATH_MAX];
 
 int update_ftp_conn()
 {
@@ -67,15 +68,23 @@ int ftp_transfer(const char *local_file, const char *remote_path, const char *re
         }
         printf("---FtpLogin ok-----\n");
 
+        if (!FtpPwd(_home_path, PATH_MAX, ftph)) {
+            printf("Failed to get home dir\n");
+            goto exit;
+        }
 
         if (!FtpOptions(FTPLIB_CONNMODE, FTPLIB_PASSIVE, ftph)) {
             printf("Failed to change to PASSIVE mode\n");
             goto exit;
         }
-        _last_conn_ticks = times(NULL);
     }
-    else
-        printf("ftpconnect using last connection \n");
+    else {
+        printf("ftpconnect using last connection home=%s\n", _home_path);
+        if (!FtpChdir(_home_path, ftph)) {
+            printf("Failed to chdir to home\n");
+            goto exit;
+        }
+    }
 
     while (rindex >= 0) {
         if (remote_path[rindex] == '/') {
@@ -127,6 +136,7 @@ int ftp_transfer(const char *local_file, const char *remote_path, const char *re
         goto exit;
     printf("---FtpRename ok------\n");
 
+    _last_conn_ticks = times(NULL);
     rc = 0;
 exit:
     if (remote_file_tmp)
