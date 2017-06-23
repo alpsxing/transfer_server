@@ -25,12 +25,13 @@ enum {
 
 #define OKFILE_NAME "./data/ok.log"
 
-#define ORG_ID     "723005104"      //厂商组织机构代码
-#define DEV_TYPE "123"               //数据采集系统类型
-#define ORIG_ID   "410823"          //数据产生源标识
+#define ORG_ID     "723005104"      //锟斤拷锟斤拷锟斤拷织锟斤拷锟斤拷锟斤拷锟斤拷
+#define DEV_TYPE "123"               //锟斤拷锟捷采硷拷系统锟斤拷锟斤拷
+#define ORIG_ID   "410823"          //锟斤拷锟捷诧拷锟斤拷源锟斤拷识
 
 int startTransferThread();
 int stopTransferThread();
 int addTransferTask(const char *filename, unsigned int filetype);
+int getSecondsPassed(clock_t last_clock);
 
 #endif
